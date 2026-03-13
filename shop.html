@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Магазин</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root {
+  --bg:#0e0e10;--surface:#1a1a1f;--surface2:#24242b;--border:#2e2e38;
+  --text:#eaeaef;--text2:#9a9aab;--accent:#6c5ce7;--price:#55efc4;--radius:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{
+  font-family:-apple-system,'SF Pro Display','Segoe UI',Roboto,sans-serif;
+  background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+#loader{
+  position:fixed;inset:0;z-index:9999;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .5s,visibility .5s;
+}
+#loader.hidden{opacity:0;visibility:hidden;pointer-events:none}
+.spinner{
+  width:48px;height:48px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;
+}
+#loader p{margin-top:18px;color:var(--text2);font-size:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.header{
+  position:sticky;top:0;z-index:100;background:rgba(14,14,16,.92);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  padding:12px 14px 0;border-bottom:1px solid var(--border);
+}
+.search-box{position:relative;margin-bottom:10px}
+.search-box input{
+  width:100%;padding:11px 14px 11px 40px;background:var(--surface);
+  border:1px solid var(--border);border-radius:12px;color:var(--text);
+  font-size:15px;outline:none;transition:border-color .2s;
+}
+.search-box input:focus{border-color:var(--accent)}
+.search-box input::placeholder{color:var(--text2)}
+.search-box .icon{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  color:var(--text2);font-size:16px;pointer-events:none;
+}
+
+/* FILTERS — фикс + скролл */
+.filters-row{
+  display:flex;align-items:flex-start;gap:8px;padding-bottom:8px;
+}
+.filters-fixed{display:flex;gap:8px;flex:0 0 auto}
+.filters-scroll{
+  flex:1 1 auto;min-width:0;
+  overflow-x:scroll;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-x;
+  display:flex;gap:8px;
+  padding-bottom:10px;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(255,255,255,.25) transparent;
+}
+.filters-scroll::-webkit-scrollbar{height:6px}
+.filters-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.05);border-radius:6px;margin:0 4px}
+.filters-scroll::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.25);border-radius:6px;min-width:40px;
+}
+.filters-scroll::-webkit-scrollbar-thumb:active{background:var(--accent)}
+
+.pill{
+  flex:0 0 auto;
+  padding:7px 16px;background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;color:var(--text2);font-size:13px;cursor:pointer;
+  transition:all .2s;white-space:nowrap;user-select:none;-webkit-tap-highlight-color:transparent;
+}
+.pill:active{transform:scale(.95)}
+.pill.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill.sort-pill .arrow{display:inline-block;transition:transform .2s}
+.pill.sort-pill.asc .arrow{transform:rotate(180deg)}
+
+.container{padding:14px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.card{
+  background:var(--surface);border-radius:var(--radius);overflow:hidden;cursor:pointer;
+  transition:transform .2s;animation:fadeUp .4s ease both;border:1px solid var(--border);
+}
+.card:active{transform:scale(.97)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.card-img{width:100%;aspect-ratio:1;object-fit:cover;background:var(--surface2);display:block}
+.card-img-err{
+  width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  background:var(--surface2);color:var(--text2);font-size:36px;
+}
+.card-body{padding:10px 12px 12px}
+.card-name{
+  font-size:13px;font-weight:600;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;margin-bottom:6px;
+}
+.card-price{font-size:15px;font-weight:700;color:var(--price)}
+
+.empty{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty .icon{font-size:48px;margin-bottom:12px}
+.empty p{font-size:14px}
+
+.overlay{
+  position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s;
+}
+.overlay.open{opacity:1;visibility:visible}
+.modal{
+  position:fixed;bottom:0;left:0;right:0;z-index:201;background:var(--surface);
+  border-radius:20px 20px 0 0;max-height:92vh;overflow-y:auto;
+  transform:translateY(100%);transition:transform .35s cubic-bezier(.32,.72,0,1);
+}
+.modal.open{transform:translateY(0)}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 0}
+.modal-img{width:100%;max-height:340px;object-fit:cover;background:var(--surface2)}
+.modal-img-err{
+  width:100%;height:180px;display:flex;align-items:center;justify-content:center;
+  font-size:64px;color:var(--text2);background:var(--surface2);
+}
+.modal-content{padding:16px 18px 28px}
+.modal-type{
+  display:inline-block;padding:4px 12px;background:var(--accent);
+  border-radius:8px;font-size:12px;font-weight:600;color:#fff;margin-bottom:10px;
+}
+.modal-name{font-size:22px;font-weight:700;line-height:1.25;margin-bottom:6px}
+.modal-price{font-size:24px;font-weight:800;color:var(--price);margin-bottom:14px}
+.modal-desc{font-size:14px;line-height:1.55;color:var(--text2);margin-bottom:8px}
+.modal-id{font-size:12px;color:var(--text2);opacity:.6;margin-bottom:20px}
+
+.btn-contact{
+  display:block;width:100%;padding:15px;background:var(--accent);color:#fff;border:none;
+  border-radius:14px;font-size:16px;font-weight:700;cursor:pointer;
+  transition:background .2s,transform .15s;-webkit-tap-highlight-color:transparent;
+}
+.btn-contact:active{transform:scale(.97);background:#5a4bd6}
+
+.contact-overlay{
+  position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.55);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s;
+}
+.contact-overlay.open{opacity:1;visibility:visible}
+.contact-menu{
+  position:fixed;bottom:0;left:0;right:0;z-index:301;
+  background:var(--surface);border-radius:20px 20px 0 0;
+  padding:16px 18px 28px;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);
+}
+.contact-menu.open{transform:translateY(0)}
+.contact-menu .cm-handle{
+  width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;
+}
+.contact-menu h3{font-size:17px;font-weight:700;margin-bottom:14px;text-align:center}
+.contact-info-box{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:12px;padding:14px;margin-bottom:14px;
+  font-size:13px;line-height:1.6;color:var(--text2);
+  user-select:all;-webkit-user-select:all;word-break:break-word;
+}
+.contact-info-box b{color:var(--text);font-weight:600}
+.cm-btns{display:flex;flex-direction:column;gap:10px}
+.cm-btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:14px;border-radius:14px;font-size:15px;font-weight:700;
+  cursor:pointer;border:none;transition:transform .15s;
+  -webkit-tap-highlight-color:transparent;text-decoration:none;
+}
+.cm-btn:active{transform:scale(.97)}
+.cm-btn-copy{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.cm-btn-msg{background:var(--accent);color:#fff}
+.cm-btn-cancel{background:transparent;color:var(--text2);font-weight:500;font-size:14px;padding:10px}
+
+.scroll-top{
+  position:fixed;bottom:20px;right:16px;z-index:100;width:44px;height:44px;
+  background:var(--accent);color:#fff;border:none;border-radius:50%;font-size:20px;
+  cursor:pointer;opacity:0;transform:scale(0);transition:opacity .3s,transform .3s;
+}
+.scroll-top.show{opacity:1;transform:scale(1)}
+
+.toast{
+  position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:#2d3436;color:#fff;padding:12px 24px;border-radius:12px;
+  font-size:14px;font-weight:600;z-index:999;opacity:0;transition:all .3s;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div id="loader"><div class="spinner"></div><p>Загрузка каталога…</p></div>
+
+<div class="header">
+  <div class="search-box">
+    <span class="icon">🔍</span>
+    <input type="text" id="searchInput" placeholder="Поиск товара…" autocomplete="off">
+  </div>
+  <div class="filters-row">
+    <div class="filters-fixed">
+      <div class="pill active" data-type="all">Все</div>
+      <div class="pill sort-pill" id="sortBtn">Цена <span class="arrow">↓</span></div>
+    </div>
+    <div class="filters-scroll" id="filtersScroll">
+      <!-- типы добавятся динамически -->
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none">
+    <div class="icon">🔎</div><p>Ничего не найдено</p>
+  </div>
+</div>
+
+<button class="scroll-top" id="scrollTop">↑</button>
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="modal">
+  <div class="modal-handle"></div>
+  <div id="modalImgWrap"></div>
+  <div class="modal-content">
+    <span class="modal-type" id="modalType"></span>
+    <div class="modal-name" id="modalName"></div>
+    <div class="modal-price" id="modalPrice"></div>
+    <div class="modal-desc" id="modalDesc"></div>
+    <div class="modal-id" id="modalId"></div>
+    <button class="btn-contact" id="btnContact">📩 Связаться с продавцом</button>
+  </div>
+</div>
+
+<div class="contact-overlay" id="contactOverlay"></div>
+<div class="contact-menu" id="contactMenu">
+  <div class="cm-handle"></div>
+  <h3>Связаться с продавцом</h3>
+  <div class="contact-info-box" id="contactInfoBox"></div>
+  <div class="cm-btns">
+    <button class="cm-btn cm-btn-copy" id="cmCopy">📋 Скопировать информацию</button>
+    <a class="cm-btn cm-btn-msg" id="cmMessage" href="#" target="_blank">💬 Написать продавцу</a>
+    <button class="cm-btn cm-btn-cancel" id="cmCancel">Отмена</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+var allProducts = [];
+var activeType = 'all';
+var sortDir = 'none';
+var currentProduct = null;
+var ownerUsername = '';
+
+var tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  var theme = tg.themeParams;
+  if (theme) {
+    if (theme.bg_color) document.documentElement.style.setProperty('--bg', theme.bg_color);
+    if (theme.secondary_bg_color) document.documentElement.style.setProperty('--surface', theme.secondary_bg_color);
+    if (theme.text_color) document.documentElement.style.setProperty('--text', theme.text_color);
+    if (theme.hint_color) document.documentElement.style.setProperty('--text2', theme.hint_color);
+    if (theme.button_color) document.documentElement.style.setProperty('--accent', theme.button_color);
+  }
+}
+
+function loadProducts() {
+  google.script.run
+    .withSuccessHandler(function(products) {
+      allProducts = products || [];
+      buildTypeFilters();
+      renderGrid();
+      document.getElementById('loader').classList.add('hidden');
+    })
+    .withFailureHandler(function() {
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('empty').style.display = 'block';
+      document.getElementById('empty').querySelector('p').textContent = 'Ошибка загрузки';
+    })
+    .getProducts();
+
+  google.script.run
+    .withSuccessHandler(function(username) { ownerUsername = username || ''; })
+    .getOwnerUsername();
+}
+
+// ═══ ФИЛЬТРЫ — типы добавляются ПОСЛЕ кнопки сортировки ═══
+function buildTypeFilters() {
+  var container = document.getElementById('filtersScroll');
+  container.innerHTML = ''; // очищаем
+
+  var typesSet = {};
+  allProducts.forEach(function(p) { if (p.type) typesSet[p.type] = true; });
+  Object.keys(typesSet).sort().forEach(function(t) {
+    var pill = document.createElement('div');
+    pill.className = 'pill dynamic';
+    pill.dataset.type = t;
+    pill.textContent = t;
+    container.appendChild(pill);
+  });
+}
+
+function selectType(type) {
+  activeType = type;
+  var pills = document.querySelectorAll('.pill[data-type]');
+  for (var i = 0; i < pills.length; i++) {
+    pills[i].classList.toggle('active', pills[i].dataset.type === type);
+  }
+  // Если выбрали тип — проскроллить к нему
+  if (type !== 'all') {
+    var scroll = document.getElementById('filtersScroll');
+    var active = scroll.querySelector('.pill.active');
+    if (active) {
+      active.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+    }
+  }
+  renderGrid();
+}
+
+// Делегирование кликов — на обоих контейнерах
+document.querySelector('.filters-fixed').addEventListener('click', function(e) {
+  var pill = e.target.closest('.pill[data-type]');
+  if (pill) selectType(pill.dataset.type);
+});
+document.getElementById('filtersScroll').addEventListener('click', function(e) {
+  var pill = e.target.closest('.pill[data-type]');
+  if (pill) selectType(pill.dataset.type);
+});
+
+document.getElementById('sortBtn').addEventListener('click', function() {
+  var btn = document.getElementById('sortBtn');
+  if (sortDir === 'none' || sortDir === 'asc') {
+    sortDir = 'desc'; btn.classList.remove('asc');
+  } else {
+    sortDir = 'asc'; btn.classList.add('asc');
+  }
+  btn.classList.add('active');
+  renderGrid();
+});
+
+var searchTimeout;
+document.getElementById('searchInput').addEventListener('input', function() {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(renderGrid, 200);
+});
+
+function renderGrid() {
+  var grid = document.getElementById('grid');
+  var empty = document.getElementById('empty');
+  var query = document.getElementById('searchInput').value.toLowerCase().trim();
+
+  var filtered = allProducts.filter(function(p) {
+    var matchType = activeType === 'all' || p.type === activeType;
+    var matchSearch = !query ||
+      p.name.toLowerCase().indexOf(query) !== -1 ||
+      (p.description && p.description.toLowerCase().indexOf(query) !== -1) ||
+      (p.type && p.type.toLowerCase().indexOf(query) !== -1);
+    return matchType && matchSearch;
+  });
+
+  if (sortDir !== 'none') {
+    filtered.sort(function(a, b) {
+      var pa = parseFloat(String(a.price).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+      var pb = parseFloat(String(b.price).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+      return sortDir === 'asc' ? pa - pb : pb - pa;
+    });
+  }
+
+  grid.innerHTML = '';
+  empty.style.display = filtered.length ? 'none' : 'block';
+
+  filtered.forEach(function(product, i) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.animationDelay = Math.min(i * 0.04, 0.5) + 's';
+    card.addEventListener('click', function() { openModal(product); });
+
+    var imgSrc = product.photo || '';
+    card.innerHTML =
+      (imgSrc
+        ? '<img class="card-img" src="' + escHtml(imgSrc) + '" alt="" onerror="this.outerHTML=\'<div class=card-img-err>📷</div>\'" loading="lazy">'
+        : '<div class="card-img-err">📷</div>') +
+      '<div class="card-body">' +
+        '<div class="card-name">' + escHtml(product.name) + '</div>' +
+        '<div class="card-price">' + escHtml(product.price) + '</div>' +
+      '</div>';
+    grid.appendChild(card);
+  });
+}
+
+var overlay = document.getElementById('overlay');
+var modal = document.getElementById('modal');
+
+function openModal(product) {
+  currentProduct = product;
+  var imgSrc = product.photo || '';
+  document.getElementById('modalImgWrap').innerHTML = imgSrc
+    ? '<img class="modal-img" src="' + escHtml(imgSrc) + '" onerror="this.outerHTML=\'<div class=modal-img-err>📷</div>\'">'
+    : '<div class="modal-img-err">📷</div>';
+
+  document.getElementById('modalType').textContent = product.type || '—';
+  document.getElementById('modalName').textContent = product.name;
+  document.getElementById('modalPrice').textContent = product.price;
+  document.getElementById('modalDesc').textContent = product.description || 'Описание отсутствует';
+  document.getElementById('modalId').textContent = 'Артикул: ' + product.id;
+
+  var btn = document.getElementById('btnContact');
+  btn.textContent = '📩 Связаться с продавцом';
+  btn.disabled = false;
+
+  overlay.classList.add('open');
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  overlay.classList.remove('open');
+  modal.classList.remove('open');
+  document.body.style.overflow = '';
+  currentProduct = null;
+}
+
+overlay.addEventListener('click', closeModal);
+var touchStartY = 0;
+modal.addEventListener('touchstart', function(e) { touchStartY = e.touches[0].clientY; });
+modal.addEventListener('touchmove', function(e) {
+  if (e.touches[0].clientY - touchStartY > 80 && modal.scrollTop <= 0) closeModal();
+});
+
+// ═══ МЕНЮ СВЯЗИ ═══
+var contactOverlay = document.getElementById('contactOverlay');
+var contactMenu = document.getElementById('contactMenu');
+
+document.getElementById('btnContact').addEventListener('click', function() {
+  if (!currentProduct) return;
+  var product = currentProduct;
+
+  var infoText =
+    '📦 ' + product.name + '\n' +
+    '💰 Цена: ' + product.price + '\n' +
+    '📝 Тип: ' + (product.type || '—') + '\n' +
+    '📋 ' + (product.description || '—') + '\n' +
+    '🔖 Артикул: ' + product.id;
+
+  var box = document.getElementById('contactInfoBox');
+  box.innerHTML =
+    '<b>' + escHtml(product.name) + '</b><br>' +
+    '💰 ' + escHtml(product.price) + '<br>' +
+    '📝 ' + escHtml(product.type || '—') + '<br>' +
+    '📋 ' + escHtml(product.description || '—') + '<br>' +
+    '🔖 Артикул: ' + escHtml(product.id);
+  box.dataset.copyText = infoText;
+
+  var link = document.getElementById('cmMessage');
+  link.href = ownerUsername ? 'https://t.me/' + ownerUsername : '#';
+
+  contactOverlay.classList.add('open');
+  contactMenu.classList.add('open');
+});
+
+function closeContactMenu() {
+  contactOverlay.classList.remove('open');
+  contactMenu.classList.remove('open');
+}
+contactOverlay.addEventListener('click', closeContactMenu);
+document.getElementById('cmCancel').addEventListener('click', closeContactMenu);
+
+document.getElementById('cmCopy').addEventListener('click', function() {
+  var text = document.getElementById('contactInfoBox').dataset.copyText || '';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('✅ Скопировано!');
+    }).catch(function() { fallbackCopy(text); });
+  } else { fallbackCopy(text); }
+});
+
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); showToast('✅ Скопировано!'); }
+  catch(e) { showToast('Не удалось скопировать'); }
+  document.body.removeChild(ta);
+}
+
+document.getElementById('cmMessage').addEventListener('click', function(e) {
+  if (!ownerUsername) { e.preventDefault(); showToast('Юзернейм продавца не настроен'); return; }
+  closeContactMenu(); closeModal();
+});
+
+var scrollBtn = document.getElementById('scrollTop');
+window.addEventListener('scroll', function() {
+  scrollBtn.classList.toggle('show', window.scrollY > 400);
+});
+scrollBtn.addEventListener('click', function() { window.scrollTo({top:0,behavior:'smooth'}); });
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2500);
+}
+
+function escHtml(s) {
+  var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML;
+}
+
+// ═══ TOUCH SCROLL для полосы типов (Telegram WebView фикс) ═══
+(function() {
+  var el = document.getElementById('filtersScroll');
+  var startX = 0, scrollLeft = 0, isDragging = false;
+
+  el.addEventListener('touchstart', function(e) {
+    isDragging = true;
+    startX = e.touches[0].pageX - el.offsetLeft;
+    scrollLeft = el.scrollLeft;
+  }, {passive: true});
+
+  el.addEventListener('touchmove', function(e) {
+    if (!isDragging) return;
+    var x = e.touches[0].pageX - el.offsetLeft;
+    var walk = (x - startX) * 1.5; // ускоряем скролл
+    el.scrollLeft = scrollLeft - walk;
+  }, {passive: true});
+
+  el.addEventListener('touchend', function() { isDragging = false; }, {passive: true});
+
+  // Мышка тоже (для десктопа)
+  el.addEventListener('mousedown', function(e) {
+    isDragging = true;
+    startX = e.pageX - el.offsetLeft;
+    scrollLeft = el.scrollLeft;
+    el.style.cursor = 'grabbing';
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    var x = e.pageX - el.offsetLeft;
+    el.scrollLeft = scrollLeft - (x - startX) * 1.5;
+  });
+  document.addEventListener('mouseup', function() {
+    isDragging = false;
+    el.style.cursor = 'grab';
+  });
+  el.style.cursor = 'grab';
+})();
+
+loadProducts();
+</script>
+</body>
+</html>
